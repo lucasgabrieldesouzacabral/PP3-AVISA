@@ -85,4 +85,124 @@ export function initDatabase() {
   `);
 }
 
+export function normalizeDiscentePayload(payload) {
+  return {
+    nome_completo: String(payload.nome_completo || '').trim(),
+    email_institucional: String(payload.email_institucional || '').trim().toLowerCase(),
+    matricula: String(payload.matricula || '').trim(),
+    senha: String(payload.senha || '').trim(),
+    curso: String(payload.curso || '').trim(),
+  };
+}
+
+export function validateDiscentePayload(payload) {
+  const normalized = normalizeDiscentePayload(payload);
+
+  if (!normalized.nome_completo || !normalized.email_institucional || !normalized.matricula || !normalized.senha || !normalized.curso) {
+    throw new Error('Preencha todos os campos do discente.');
+  }
+
+  if (!normalized.email_institucional.includes('@')) {
+    throw new Error('Informe um e-mail institucional válido.');
+  }
+
+  if (normalized.senha.length < 6) {
+    throw new Error('A senha deve ter pelo menos 6 caracteres.');
+  }
+
+  return normalized;
+}
+
+export function registerDiscente(payload) {
+  const data = validateDiscentePayload(payload);
+
+  const existsEmail = db.getFirstSync(
+    'SELECT id_usuario FROM usuarios WHERE email_institucional = ?',
+    [data.email_institucional]
+  );
+
+  if (existsEmail) {
+    throw new Error('E-mail institucional já cadastrado.');
+  }
+
+  const existsMatricula = db.getFirstSync(
+    'SELECT id_usuario FROM usuarios WHERE matricula = ?',
+    [data.matricula]
+  );
+
+  if (existsMatricula) {
+    throw new Error('Matrícula já cadastrada.');
+  }
+
+  db.runSync(
+    `INSERT INTO usuarios (nome_completo, email_institucional, matricula, senha, tipo_usuario)
+     VALUES (?, ?, ?, ?, 'Discente')`,
+    [data.nome_completo, data.email_institucional, data.matricula, data.senha]
+  );
+
+  const usuario = db.getFirstSync(
+    'SELECT id_usuario FROM usuarios WHERE email_institucional = ?',
+    [data.email_institucional]
+  );
+
+  db.runSync(
+    'INSERT INTO discentes (id_usuario, curso) VALUES (?, ?)',
+    [usuario.id_usuario, data.curso]
+  );
+
+  return db.getFirstSync(
+    'SELECT id_usuario, nome_completo, email_institucional, matricula, tipo_usuario FROM usuarios WHERE id_usuario = ?',
+    [usuario.id_usuario]
+  );
+}
+
+export function loginDiscente(email_institucional, senha) {
+  const email = String(email_institucional || '').trim().toLowerCase();
+  const password = String(senha || '').trim();
+
+  if (!email || !password) {
+    throw new Error('Informe o e-mail institucional e a senha.');
+  }
+
+  const usuario = db.getFirstSync(
+    `SELECT u.*
+     FROM usuarios u
+     LEFT JOIN discentes d ON d.id_usuario = u.id_usuario
+     WHERE u.email_institucional = ? AND u.senha = ? AND u.tipo_usuario = 'Discente'`,
+    [email, password]
+  );
+
+  if (!usuario) {
+    throw new Error('Credenciais inválidas.');
+  }
+
+  const discente = db.getFirstSync(
+    'SELECT id_usuario, curso FROM discentes WHERE id_usuario = ?',
+    [usuario.id_usuario]
+  );
+
+  if (!discente) {
+    throw new Error('O usuário encontrado não é um discente válido.');
+  }
+
+  return {
+    id_usuario: usuario.id_usuario,
+    nome_completo: usuario.nome_completo,
+    email_institucional: usuario.email_institucional,
+    matricula: usuario.matricula,
+    tipo_usuario: usuario.tipo_usuario,
+    curso: discente.curso,
+  };
+}
+
+export function getDiscenteById(id_usuario) {
+  return db.getFirstSync(
+    `SELECT u.id_usuario, u.nome_completo, u.email_institucional, u.matricula, u.tipo_usuario, d.curso
+     FROM usuarios u
+     JOIN discentes d ON d.id_usuario = u.id_usuario
+     WHERE u.id_usuario = ?`,
+    [id_usuario]
+  );
+}
+
 export default db;
