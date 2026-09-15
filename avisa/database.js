@@ -1,9 +1,35 @@
 import * as SQLite from 'expo-sqlite';
+import { Platform } from 'react-native';
 
-const db = SQLite.openDatabaseSync('meuavisa.db');
+let db;
+const WEB_USERS_KEY = 'meuavisa.usuarios';
+
+function getDatabase() {
+  if (Platform.OS === 'web') {
+    throw new Error('O banco local está disponível apenas no aplicativo mobile.');
+  }
+
+  if (!db) {
+    db = SQLite.openDatabaseSync('meuavisa.db');
+  }
+
+  return db;
+}
+
+function getWebUsers() {
+  return JSON.parse(window.localStorage.getItem(WEB_USERS_KEY) || '[]');
+}
+
+function saveWebUsers(users) {
+  window.localStorage.setItem(WEB_USERS_KEY, JSON.stringify(users));
+}
 
 export function initDatabase() {
-  db.execSync(`
+  if (Platform.OS === 'web') {
+    return;
+  }
+
+  getDatabase().execSync(`
     PRAGMA foreign_keys = ON;
 
     CREATE TABLE IF NOT EXISTS usuarios (
@@ -116,7 +142,34 @@ export function validateDiscentePayload(payload) {
 export function registerDiscente(payload) {
   const data = validateDiscentePayload(payload);
 
-  const existsEmail = db.getFirstSync(
+  if (Platform.OS === 'web') {
+    const users = getWebUsers();
+
+    if (users.some((user) => user.email_institucional === data.email_institucional)) {
+      throw new Error('E-mail institucional já cadastrado.');
+    }
+
+    if (users.some((user) => user.matricula === data.matricula)) {
+      throw new Error('Matrícula já cadastrada.');
+    }
+
+    const usuario = {
+      id_usuario: users.length + 1,
+      nome_completo: data.nome_completo,
+      email_institucional: data.email_institucional,
+      matricula: data.matricula,
+      senha: data.senha,
+      tipo_usuario: 'Discente',
+      curso: data.curso,
+    };
+
+    saveWebUsers([...users, usuario]);
+    return usuario;
+  }
+
+  const database = getDatabase();
+
+  const existsEmail = database.getFirstSync(
     'SELECT id_usuario FROM usuarios WHERE email_institucional = ?',
     [data.email_institucional]
   );
@@ -125,7 +178,7 @@ export function registerDiscente(payload) {
     throw new Error('E-mail institucional já cadastrado.');
   }
 
-  const existsMatricula = db.getFirstSync(
+  const existsMatricula = database.getFirstSync(
     'SELECT id_usuario FROM usuarios WHERE matricula = ?',
     [data.matricula]
   );
@@ -134,23 +187,23 @@ export function registerDiscente(payload) {
     throw new Error('Matrícula já cadastrada.');
   }
 
-  db.runSync(
+  database.runSync(
     `INSERT INTO usuarios (nome_completo, email_institucional, matricula, senha, tipo_usuario)
      VALUES (?, ?, ?, ?, 'Discente')`,
     [data.nome_completo, data.email_institucional, data.matricula, data.senha]
   );
 
-  const usuario = db.getFirstSync(
+  const usuario = database.getFirstSync(
     'SELECT id_usuario FROM usuarios WHERE email_institucional = ?',
     [data.email_institucional]
   );
 
-  db.runSync(
+  database.runSync(
     'INSERT INTO discentes (id_usuario, curso) VALUES (?, ?)',
     [usuario.id_usuario, data.curso]
   );
 
-  return db.getFirstSync(
+  return database.getFirstSync(
     'SELECT id_usuario, nome_completo, email_institucional, matricula, tipo_usuario FROM usuarios WHERE id_usuario = ?',
     [usuario.id_usuario]
   );
@@ -164,7 +217,20 @@ export function loginDiscente(email_institucional, senha) {
     throw new Error('Informe o e-mail institucional e a senha.');
   }
 
-  const usuario = db.getFirstSync(
+  if (Platform.OS === 'web') {
+    const usuario = getWebUsers().find(
+      (item) => item.email_institucional === email && item.senha === password
+    );
+
+    if (!usuario) {
+      throw new Error('Credenciais inválidas.');
+    }
+
+    return usuario;
+  }
+
+  const database = getDatabase();
+  const usuario = database.getFirstSync(
     `SELECT u.*
      FROM usuarios u
      LEFT JOIN discentes d ON d.id_usuario = u.id_usuario
@@ -176,7 +242,7 @@ export function loginDiscente(email_institucional, senha) {
     throw new Error('Credenciais inválidas.');
   }
 
-  const discente = db.getFirstSync(
+  const discente = database.getFirstSync(
     'SELECT id_usuario, curso FROM discentes WHERE id_usuario = ?',
     [usuario.id_usuario]
   );
@@ -196,7 +262,7 @@ export function loginDiscente(email_institucional, senha) {
 }
 
 export function getDiscenteById(id_usuario) {
-  return db.getFirstSync(
+  return getDatabase().getFirstSync(
     `SELECT u.id_usuario, u.nome_completo, u.email_institucional, u.matricula, u.tipo_usuario, d.curso
      FROM usuarios u
      JOIN discentes d ON d.id_usuario = u.id_usuario
@@ -205,4 +271,4 @@ export function getDiscenteById(id_usuario) {
   );
 }
 
-export default db;
+export default { getDatabase };
