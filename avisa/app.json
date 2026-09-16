@@ -4,7 +4,8 @@
     "slug": "meuavisa",
     "version": "1.0.0",
     "plugins": [
-      "expo-sqlite"
+      "expo-sqlite",
+      "expo-status-bar"
     ]
   }
 }

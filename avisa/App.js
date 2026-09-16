@@ -17,13 +17,14 @@ export default function App() {
       const data = JSON.parse(message);
 
       if (data.type === 'route') {
-        const nextRoute = data.route === 'cadastro.html'
-          ? 'cadastro'
-          : data.route === 'inicio.html'
-            ? 'inicio'
-            : data.route === 'perfil.html'
-              ? 'perfil'
-            : 'login';
+        const nextRoute =
+          data.route === 'cadastro.html'
+            ? 'cadastro'
+            : data.route === 'inicio.html'
+              ? 'inicio'
+              : data.route === 'perfil.html'
+                ? 'perfil'
+                : 'login';
         if (nextRoute === 'login') setUser(null);
         setRoute(nextRoute);
         return;
