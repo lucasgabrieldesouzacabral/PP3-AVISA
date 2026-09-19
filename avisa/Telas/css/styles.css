@@ -194,6 +194,10 @@ button {
   margin-bottom: 16px;
 }
 
+.field[hidden] {
+  display: none;
+}
+
 .field > span,
 .field > label:not(.role) {
   display: inline-flex;

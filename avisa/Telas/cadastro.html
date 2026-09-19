@@ -61,7 +61,7 @@
             </div>
           </div>
 
-          <div class="field">
+          <div class="field" id="matricula-field">
             <label for="matricula">Matrícula</label>
             <div class="input-wrap">
               <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -72,14 +72,14 @@
             </div>
           </div>
 
-          <div class="field">
-            <label for="curso">Curso</label>
+          <div class="field" id="specific-field">
+            <label for="curso" id="specific-label">Curso</label>
             <div class="input-wrap">
               <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M22 10v6M2 10l10-5 10 5-10 5z" />
                 <path d="M6 12v5c3 3 9 3 12 0v-5" />
               </svg>
-              <input id="curso" name="curso" placeholder="Seu curso" />
+              <input id="specific-input" name="curso" placeholder="Seu curso" required />
             </div>
           </div>
 
@@ -123,5 +123,34 @@
         </form>
       </main>
     </div>
+    <script>
+      const roleFields = {
+        Discente: { label: 'Curso', name: 'curso', placeholder: 'Seu curso' },
+        Docente: { label: 'Número da CNDB', name: 'CNDB', placeholder: 'Número da CNDB' },
+        Servidor: { label: 'CPF', name: 'cpf', placeholder: 'Seu CPF' },
+      };
+
+      const roleInputs = document.querySelectorAll('input[name="role"]');
+      const matriculaField = document.getElementById('matricula-field');
+      const matriculaInput = document.getElementById('matricula');
+      const specificLabel = document.getElementById('specific-label');
+      const specificInput = document.getElementById('specific-input');
+
+      function updateRoleField(role) {
+        const field = roleFields[role];
+        const isDiscente = role === 'Discente';
+        matriculaField.hidden = !isDiscente;
+        matriculaInput.required = isDiscente;
+        if (!isDiscente) matriculaInput.value = '';
+        specificLabel.textContent = field.label;
+        specificInput.name = field.name;
+        specificInput.id = field.name;
+        specificInput.placeholder = field.placeholder;
+      }
+
+      roleInputs.forEach((input) => {
+        input.addEventListener('change', () => updateRoleField(input.value));
+      });
+    </script>
   </body>
 </html>

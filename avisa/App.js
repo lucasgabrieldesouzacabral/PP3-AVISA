@@ -39,20 +39,19 @@ export default function App() {
       }
 
       if (data.type === 'register') {
-        if (data.role !== 'Discente') {
-          throw new Error('Neste momento, o cadastro disponível é apenas para discentes.');
-        }
-
-        const usuario = discenteAuthRoutes.register({
+        const usuario = discenteAuthRoutes.registerUser({
           nome_completo: data.name,
           email_institucional: data.email,
           matricula: data.matricula,
           senha: data.password,
+          tipo_usuario: data.role,
           curso: data.curso,
+          CNDB: data.CNDB,
+          cpf: data.cpf,
         });
 
         setRoute('login');
-        Alert.alert('Cadastro realizado', `Discente cadastrado: ${usuario.nome_completo}`);
+        Alert.alert('Cadastro realizado', `${usuario.tipo_usuario} cadastrado: ${usuario.nome_completo}`);
       }
     } catch (error) {
       Alert.alert('Não foi possível concluir', error.message);

@@ -36,7 +36,7 @@ export function initDatabase() {
       id_usuario INTEGER PRIMARY KEY AUTOINCREMENT,
       nome_completo TEXT NOT NULL,
       email_institucional TEXT UNIQUE NOT NULL,
-      matricula TEXT UNIQUE NOT NULL,
+      matricula TEXT UNIQUE,
       senha TEXT NOT NULL,
       tipo_usuario TEXT NOT NULL CHECK (tipo_usuario IN ('Discente', 'Docente', 'Servidor')),
       data_cadastro TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -50,13 +50,13 @@ export function initDatabase() {
 
     CREATE TABLE IF NOT EXISTS docentes (
       id_usuario INTEGER PRIMARY KEY,
-      formacao TEXT NOT NULL,
+      CNDB INTEGER NOT NULL,
       FOREIGN KEY (id_usuario) REFERENCES usuarios (id_usuario) ON DELETE CASCADE
     );
 
     CREATE TABLE IF NOT EXISTS servidores (
       id_usuario INTEGER PRIMARY KEY,
-      funcao TEXT NOT NULL,
+      cpf TEXT NOT NULL,
       FOREIGN KEY (id_usuario) REFERENCES usuarios (id_usuario) ON DELETE CASCADE
     );
 
@@ -111,21 +111,36 @@ export function initDatabase() {
   `);
 }
 
-export function normalizeDiscentePayload(payload) {
+export function normalizeRegistrationPayload(payload) {
   return {
     nome_completo: String(payload.nome_completo || '').trim(),
     email_institucional: String(payload.email_institucional || '').trim().toLowerCase(),
     matricula: String(payload.matricula || '').trim(),
     senha: String(payload.senha || '').trim(),
+    tipo_usuario: String(payload.tipo_usuario || 'Discente').trim(),
     curso: String(payload.curso || '').trim(),
+    CNDB: String(payload.CNDB || '').trim(),
+    cpf: String(payload.cpf || '').trim(),
   };
 }
 
-export function validateDiscentePayload(payload) {
-  const normalized = normalizeDiscentePayload(payload);
+export function validateRegistrationPayload(payload) {
+  const normalized = normalizeRegistrationPayload(payload);
 
-  if (!normalized.nome_completo || !normalized.email_institucional || !normalized.matricula || !normalized.senha || !normalized.curso) {
-    throw new Error('Preencha todos os campos do discente.');
+  if (!['Discente', 'Docente', 'Servidor'].includes(normalized.tipo_usuario)) {
+    throw new Error('Selecione um tipo de usuário válido.');
+  }
+
+  const specificField = normalized.tipo_usuario === 'Discente'
+    ? normalized.curso
+    : normalized.tipo_usuario === 'Docente'
+      ? normalized.CNDB
+      : normalized.cpf;
+
+  const requiresMatricula = normalized.tipo_usuario === 'Discente';
+
+  if (!normalized.nome_completo || !normalized.email_institucional || (requiresMatricula && !normalized.matricula) || !normalized.senha || !specificField) {
+    throw new Error('Preencha todos os campos do cadastro.');
   }
 
   if (!normalized.email_institucional.includes('@')) {
@@ -139,8 +154,15 @@ export function validateDiscentePayload(payload) {
   return normalized;
 }
 
-export function registerDiscente(payload) {
-  const data = validateDiscentePayload(payload);
+function getSpecificUserData(data) {
+  if (data.tipo_usuario === 'Discente') return { curso: data.curso };
+  if (data.tipo_usuario === 'Docente') return { CNDB: data.CNDB };
+  return { cpf: data.cpf };
+}
+
+export function registerUser(payload) {
+  const data = validateRegistrationPayload(payload);
+  const specificData = getSpecificUserData(data);
 
   if (Platform.OS === 'web') {
     const users = getWebUsers();
@@ -149,7 +171,7 @@ export function registerDiscente(payload) {
       throw new Error('E-mail institucional já cadastrado.');
     }
 
-    if (users.some((user) => user.matricula === data.matricula)) {
+    if (data.matricula && users.some((user) => user.matricula === data.matricula)) {
       throw new Error('Matrícula já cadastrada.');
     }
 
@@ -157,10 +179,10 @@ export function registerDiscente(payload) {
       id_usuario: users.length + 1,
       nome_completo: data.nome_completo,
       email_institucional: data.email_institucional,
-      matricula: data.matricula,
+      matricula: data.matricula || null,
       senha: data.senha,
-      tipo_usuario: 'Discente',
-      curso: data.curso,
+      tipo_usuario: data.tipo_usuario,
+      ...specificData,
     };
 
     saveWebUsers([...users, usuario]);
@@ -178,19 +200,21 @@ export function registerDiscente(payload) {
     throw new Error('E-mail institucional já cadastrado.');
   }
 
-  const existsMatricula = database.getFirstSync(
-    'SELECT id_usuario FROM usuarios WHERE matricula = ?',
-    [data.matricula]
-  );
+  if (data.matricula) {
+    const existsMatricula = database.getFirstSync(
+      'SELECT id_usuario FROM usuarios WHERE matricula = ?',
+      [data.matricula]
+    );
 
-  if (existsMatricula) {
-    throw new Error('Matrícula já cadastrada.');
+    if (existsMatricula) {
+      throw new Error('Matrícula já cadastrada.');
+    }
   }
 
   database.runSync(
     `INSERT INTO usuarios (nome_completo, email_institucional, matricula, senha, tipo_usuario)
-     VALUES (?, ?, ?, ?, 'Discente')`,
-    [data.nome_completo, data.email_institucional, data.matricula, data.senha]
+     VALUES (?, ?, ?, ?, ?)`,
+    [data.nome_completo, data.email_institucional, data.matricula || null, data.senha, data.tipo_usuario]
   );
 
   const usuario = database.getFirstSync(
@@ -198,15 +222,18 @@ export function registerDiscente(payload) {
     [data.email_institucional]
   );
 
-  database.runSync(
-    'INSERT INTO discentes (id_usuario, curso) VALUES (?, ?)',
-    [usuario.id_usuario, data.curso]
-  );
+  const table = data.tipo_usuario === 'Discente' ? 'discentes' : data.tipo_usuario === 'Docente' ? 'docentes' : 'servidores';
+  const column = data.tipo_usuario === 'Discente' ? 'curso' : data.tipo_usuario === 'Docente' ? 'CNDB' : 'cpf';
+  database.runSync(`INSERT INTO ${table} (id_usuario, ${column}) VALUES (?, ?)`, [usuario.id_usuario, specificData[column]]);
 
   return database.getFirstSync(
     'SELECT id_usuario, nome_completo, email_institucional, matricula, tipo_usuario FROM usuarios WHERE id_usuario = ?',
     [usuario.id_usuario]
   );
+}
+
+export function registerDiscente(payload) {
+  return registerUser({ ...payload, tipo_usuario: 'Discente' });
 }
 
 export function loginDiscente(email_institucional, senha) {
